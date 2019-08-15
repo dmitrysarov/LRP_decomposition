@@ -1,4 +1,14 @@
 import torch
+import copy
+
+def flatten_model(module):
+    modules_list = []
+    for m_1 in module.children():
+        if len(list(m_1.children())) == 0:
+            modules_list.append(m_1)
+        else:
+            modules_list = modules_list + flatten_model(m_1)
+    return modules_list
 
 class LRP():
     '''
@@ -9,7 +19,7 @@ class LRP():
         self.model = model.eval()
         # obtain base moduls (not combination like Sequantial) and add hook to it
         self.hooks = [Hook(num, module) for num, module
-                      in enumerate(chain.from_iterable(self.model.children()))]
+                      in enumerate(flatten_model(self.model))]
         self.output = None
 
     def forward(self, input_):
