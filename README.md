@@ -1,8 +1,4 @@
-LRP.py - LRP class definition, week implemenation because model should be
-
-defined in proper way (namely model.children should be sequance of
-
-nn.Sequence). More general approach should be implemented
+LRP.py - LRP class definition, week implemenation because model should be defined in proper way (namely model.children should be sequance of nn.Sequence). More general approach should be implemented
 
 LRP_notebook.ipynb - demonstration on MNIST data
 
