@@ -20,6 +20,7 @@ class Net(nn.Module):
             nn.ReLU(),
             nn.Dropout(),
             nn.Linear(50, 10),
+            nn.ReLU()
         )
 
     def forward(self, x):
@@ -44,8 +45,8 @@ if __name__ == '__main__':
     torchvision.datasets.MNIST('/files/', train=True, download=True,
                                 transform=torchvision.transforms.Compose([
                                 torchvision.transforms.ToTensor(),
-                                torchvision.transforms.Normalize(
-                                    (0.1307,), (0.3081,))
+                               # torchvision.transforms.Normalize(
+                               #     (0.1307,), (0.3081,))
                                 ])),
     batch_size=batch_size_train, shuffle=True)
 

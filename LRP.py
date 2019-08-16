@@ -18,7 +18,66 @@ def copy_module(module):
     '''
     sometimes copy.deepcopy() does not work
     '''
-    return pickle.loads(pickle.dumps(module))
+    module = copy.deepcopy(pickle.loads(pickle.dumps(module)))
+    module._forward_hooks.popitem()#remove hooks from module copy
+    return module
+
+def z_plus_rule(module, input_, R):
+    '''
+    if input constrained to positive only (e.g. Relu)
+    '''
+    pself = module
+    if hasattr(pself, 'bias'):
+        pself.bias.data.zero_()
+    if hasattr(pself, 'weight'):
+        pself.weight.data.clamp_(0, float('inf'))
+    Z = pself(input_)+1e-9
+    S = R/Z
+    Z.backward(S)
+    C = input_.grad
+    R = input_*C
+    return R
+
+def z_box_rule(module, input_, R, lowest, highest):
+    '''
+    if input constrained to bounds lowest and highest
+    '''
+    assert input_.min()>=lowest
+    assert input_.max()<=highest
+    iself = copy.deepcopy(module)
+    iself.bias.data.zero_()
+    nself = copy.deepcopy(module)
+    nself.bias.data.zero_()
+    nself.weight.data.clamp_(-float('inf'), 0)
+    pself = copy.deepcopy(module)
+    pself.bias.data.zero_()
+    pself.weight.data.clamp_(0, float('inf'))
+    L = torch.zeros_like(input_)+lowest
+    H = torch.zeros_like(input_)+highest
+    L.requires_grad_(True)
+    L.retain_grad()
+    H.requires_grad_(True)
+    H.retain_grad()
+    Z = iself(input_)-pself(L)-nself(H)+1e-9
+    S = R/Z
+    Z.backward(S)
+    R = input_*input_.grad-L*L.grad-H*H.grad
+    return R
+
+def w2_rule(module, input_, R):
+    '''
+    if input is unconstrained
+    '''
+    pself = module
+    if hasattr(pself, 'bias'):
+        pself.bias.data.zero_()
+    if hasattr(pself, 'weight'):
+        pself.weight.data = pself.weight.data**2
+    Z = pself(input_)+1e-9
+    S = R/pself(torch.ones_like(input_))
+    Z.backward(S)
+    R = input_.grad
+    return R
 
 class LRP():
     '''
@@ -38,6 +97,8 @@ class LRP():
         return self.output
 
     def relprop(self, R):
+        global MODEL_DEPTH
+        MODEL_DEPTH = len(self.hooks)
         assert self.output is not None, 'Forward pass not performed. Do .forward() first'
         for h in self.hooks[::-1]:
             R = h.relprop(R)
@@ -75,22 +136,12 @@ class Hook(object):
         '''
         R = R.view(self.output.shape) # stitching ".view" step, frequantly in classifier
         layer_name = self.module._get_name()
-        Ri = globals()[layer_name].relprop(copy_module(self.module), self.input, R, self.num)
-       # if layer_name == 'Conv2d' and self.num != 0:
-       #     Ri = NextConvolution2d.relprop(copy_module(self.module), self.input, R)
-       # if layer_name == 'Conv2d' and self.num == 0:
-       #     Ri = FirstConvolution2d.relprop(copy_module(self.module), self.input, R)
-       # elif layer_name == 'Dropout':
-       #     Ri = Dropout.relprop(copy_module(self.module), self.input, R)
-       # elif layer_name == 'Linear' and self.num != 0:
-       #     Ri = NextLinear.relprop(copy_module(self.module), self.input, R)
-       # elif layer_name == 'MaxPool2d':
-       #     Ri = MaxPool2d.relprop(copy_module(self.module), self.input, R)
-       # elif layer_name == 'ReLU':
-       #     Ri = ReLU.relprop(copy_module(self.module), self.input, R)
+        Ri = globals()[layer_name].relprop(copy_module(self.module),
+                self.input, R, self.num)
+        Ri = Ri.clone().detach()
         if self.input.grad is not None:
             self.input.grad.zero_()
-        return Ri.detach()
+        return Ri
 
     def __del__(self):
         self.close()
@@ -115,17 +166,12 @@ class Linear(torch.nn.Linear):
 
     @staticmethod
     def relprop(module, input_, R, num):
-        if num !=0 :
-            pself = module
-            pself.bias.data.zero_()
-            pself.weight.data.clamp_(0, float('inf'))
-            Z = pself(input_)+1e-9
-            S = R/Z
-            Z.backward(S)
-            C = input_.grad
-            R = input_*C
+        if num == MODEL_DEPTH-1:
+            R = w2_rule(module, input_, R)
         elif num == 0:
             raise NotImplementedError
+        else:
+            R = z_plus_rule(module, input_, R)
         #DOTO implement first linear layer
         return R
 
@@ -133,44 +179,15 @@ class Conv2d(torch.nn.Conv2d):
 
     @staticmethod
     def relprop(module, input_, R, num):
-        if num != 0: #nextconvolitional layer
-            pself = module
-            pself.bias.data.zero_()
-            pself.weight.data.clamp_(0, float('inf'))
-            Z = pself(input_)+1e-9
-            S = R/Z
-            Z.backward(S)
-            C = input_.grad
-            R = input_*C
-        elif num == 0:
-            lowest = -0.5 #input_.min()
-            highest = 3 #input_.max()
-            iself = copy.deepcopy(module)
-            iself.bias.data.zero_()
-            nself = copy.deepcopy(module)
-            nself.bias.data.zero_()
-            nself.weight.data.clamp_(-float('inf'), 0)
-            pself = copy.deepcopy(module)
-            pself.bias.data.zero_()
-            pself.weight.data.clamp_(0, float('inf'))
-            L = torch.zeros_like(input_)+lowest
-            H = torch.zeros_like(input_)+highest
-            L.requires_grad_(True)
-            L.retain_grad()
-            H.requires_grad_(True)
-            H.retain_grad()
-            Z = iself(input_)-pself(L)-nself(H)+1e-9
-            S = R/Z
-            Z.backward(S)
-            R = input_*input_.grad-L*L.grad-H*H.grad
+        if num == 0:
+            R = z_box_rule(module, input_, R, lowest=0, highest=1)
+        else: #nextconvolitional layer
+            R = z_plus_rule(module, input_, R)
         return R
 
 class MaxPool2d(torch.nn.MaxPool2d):
 
     @staticmethod
     def relprop(module, input_, R, num):
-        Z = module(input_) + 1e-9
-        S = R/Z
-        Z.backward(S)
-        R = input_.grad*input_
+        R = z_plus_rule(module, input_, R)
         return R
