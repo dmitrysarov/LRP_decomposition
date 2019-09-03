@@ -38,6 +38,22 @@ def z_plus_rule(module, input_, R):
     R = input_*C
     return R
 
+def z_epsilon_rule(module, input_, R):
+    '''
+    if input constrained to positive only (e.g. Relu)
+    '''
+    pself = module
+    if hasattr(pself, 'bias'):
+        pself.bias.data.zero_()
+    if hasattr(pself, 'weight'):
+        pself.weight.data.clamp_(0, float('inf'))
+    Z = pself(input_)+1e-9
+    S = R/Z
+    Z.backward(S)
+    C = input_.grad
+    R = input_*C
+    return R
+
 def z_box_rule(module, input_, R, lowest, highest):
     '''
     if input constrained to bounds lowest and highest
@@ -168,10 +184,12 @@ class Linear(torch.nn.Linear):
     def relprop(module, input_, R, num):
         if num == MODEL_DEPTH-1:
             R = w2_rule(module, input_, R)
+            #R = z_plus_rule(module, input_, R)
         elif num == 0:
             raise NotImplementedError
         else:
-            R = z_plus_rule(module, input_, R)
+            #R = z_plus_rule(module, input_, R)
+            R = w2_rule(module, input_, R)
         #DOTO implement first linear layer
         return R
 
@@ -180,14 +198,18 @@ class Conv2d(torch.nn.Conv2d):
     @staticmethod
     def relprop(module, input_, R, num):
         if num == 0:
-            R = z_box_rule(module, input_, R, lowest=0, highest=1)
+            #R = z_box_rule(module, input_, R, lowest=0, highest=1)
+           # R = z_plus_rule(module, input_, R)
+            R = w2_rule(module, input_, R)
         else: #nextconvolitional layer
-            R = z_plus_rule(module, input_, R)
+            #R = z_plus_rule(module, input_, R)
+            R = w2_rule(module, input_, R)
         return R
 
 class MaxPool2d(torch.nn.MaxPool2d):
 
     @staticmethod
     def relprop(module, input_, R, num):
-        R = z_plus_rule(module, input_, R)
+        #R = z_plus_rule(module, input_, R)
+        R = w2_rule(module, input_, R)
         return R
