@@ -20,7 +20,7 @@ class Net(nn.Module):
             nn.ReLU(),
             nn.Dropout(),
             nn.Linear(50, 10),
-            nn.ReLU()
+           # nn.ReLU()
         )
 
     def forward(self, x):
