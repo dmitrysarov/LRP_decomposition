@@ -190,7 +190,7 @@ class Linear(torch.nn.Linear):
         else:
             #R = z_plus_rule(module, input_, R)
             R = w2_rule(module, input_, R)
-        #DOTO implement first linear layer
+        #TODO: implement first linear layer
         return R
 
 class Conv2d(torch.nn.Conv2d):
@@ -198,12 +198,12 @@ class Conv2d(torch.nn.Conv2d):
     @staticmethod
     def relprop(module, input_, R, num):
         if num == 0:
-            #R = z_box_rule(module, input_, R, lowest=0, highest=1)
+            R = z_box_rule(module, input_, R, lowest=-1, highest=1)
            # R = z_plus_rule(module, input_, R)
-            R = w2_rule(module, input_, R)
+           # R = w2_rule(module, input_, R)
         else: #nextconvolitional layer
-            #R = z_plus_rule(module, input_, R)
-            R = w2_rule(module, input_, R)
+            R = z_plus_rule(module, input_, R)
+            #R = w2_rule(module, input_, R)
         return R
 
 class MaxPool2d(torch.nn.MaxPool2d):
