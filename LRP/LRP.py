@@ -84,7 +84,7 @@ class Hook(object):
 
     def relprop(self, R):
         '''
-        LAyer type specific propogation of relevance
+        Layer type specific propogation of relevance
         '''
         R = R.view(self.output.shape)  # stitching ".view" step, frequantly in classifier
         layer_name = self.module._get_name()
@@ -102,7 +102,11 @@ class Hook(object):
             del_super()
 
 
-# Initial idea was to overload backward pass, but then I stick with hooks
+# Initial idea was to overload backward pass, 
+# but then I stick with hooks. Here for each layer I define 
+# relprop method
+
+
 class ReLU(torch.nn.ReLU):
 
     @staticmethod
@@ -121,17 +125,19 @@ class Linear(torch.nn.Linear):
 
     @staticmethod
     def relprop(module, input_, R, num):
-        if num == MODEL_DEPTH - 1:
+        if num == MODEL_DEPTH - 1: #if last layer
             #R = rules.w2_rule(module, input_, R)
             #R = rules.z_plus_rule(module, input_, R)
-            R = rules.z_rule(module, input_, R)
-        elif num == 0:
-            raise NotImplementedError
+            #R = rules.z_rule(module, input_, R)
+            R = rules.z_epsilon_rule(module, input_, R)
+        elif num == 0: #if first layer
+            R = rules.z_box_rule(module, input_, R, lowest=-1,
+              highest=1) #image should be maped to [-1, 1] intv
         else:
             #R = rules.z_plus_rule(module, input_, R)
             #R = rules.w2_rule(module, input_, R)
-            R = rules.z_rule(module, input_, R)
-        #TODO: implement first linear layer
+            #R = rules.z_rule(module, input_, R)
+            R = rules.z_epsilon_rule(module, input_, R)
         return R
 
 
@@ -144,7 +150,8 @@ class Conv2d(torch.nn.Conv2d):
            #R = rules.z_plus_rule(module, input_, R)
            #R = rules.w2_rule(module, input_, R)
         else: #nextconvolitional layer
-            R = rules.z_rule(module, input_, R)
+            R = rules.z_epsilon_rule(module, input_, R)
+            #R = rules.z_rule(module, input_, R)
             #R = rules.w2_rule(module, input_, R)
         return R
 
@@ -155,5 +162,6 @@ class MaxPool2d(torch.nn.MaxPool2d):
     def relprop(module, input_, R, num):
         #R = z_plus_rule(module, input_, R)
         #R = w2_rule(module, input_, R)
-        R = rules.z_rule(module, input_, R)
+        R = rules.z_epsilon_rule(module, input_, R)
+        #R = rules.z_rule(module, input_, R)
         return R

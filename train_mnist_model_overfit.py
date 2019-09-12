@@ -4,28 +4,21 @@ from torch import nn
 
 GPU = 0
 
-class Net(nn.Module):
+class Fcnn(nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
+        super(Fcnn, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(1, 10, kernel_size=5),
-            nn.MaxPool2d(2),
-            nn.ReLU(),
-            nn.Conv2d(10, 20, kernel_size=5),
-            nn.MaxPool2d(2),
+            nn.Linear(28*28, 1000),
             nn.ReLU(),
         )
         self.classifier = nn.Sequential(
-            nn.Linear(320, 50),
-            nn.ReLU(),
-            nn.Dropout(),
-            nn.Linear(50, 10),
+            nn.Linear(1000, 10),
            # nn.ReLU()
         )
 
     def forward(self, x):
+        x = x.squeeze().view(-1, 28*28)
         x = self.features(x)
-        x = x.view(-1, 320)
         x = self.classifier(x)
         return x
 
@@ -45,7 +38,7 @@ def preprocessing(X):
 
 if __name__ == '__main__':
 
-    model = Net()
+    model = Fcnn()
 
     if GPU is not None:
         model = model.cuda(GPU)
@@ -55,25 +48,18 @@ if __name__ == '__main__':
     lr = 0.001
     log_interval = 1000
     n_epochs = 100
-    train_loader = torch.utils.data.DataLoader(
-    torchvision.datasets.MNIST('/files/', train=True, download=True,
+    train_dataset = torchvision.datasets.MNIST('/files/', train=True, download=True,
                                 transform=torchvision.transforms.Compose([
                                 torchvision.transforms.ToTensor(),
                                 torchvision.transforms.Lambda(preprocessing),
-                               # torchvision.transforms.Normalize(
-                               #     (0.1307,), (0.3081,))
-                                ])),
-    batch_size=batch_size_train, shuffle=True)
+                                ]))
+    train_loader = torch.utils.data.DataLoader(
+    [train_dataset[0]],
+    batch_size=batch_size_train, shuffle=False)
 
     test_loader = torch.utils.data.DataLoader(
-    torchvision.datasets.MNIST('/files/', train=False, download=True,
-                                transform=torchvision.transforms.Compose([
-                                torchvision.transforms.ToTensor(),
-                                torchvision.transforms.Lambda(preprocessing),
-                               # torchvision.transforms.Normalize(
-                               #     (0.1307,), (0.3081,))
-                                ])),
-    batch_size=batch_size_test, shuffle=True)
+    [train_dataset[0], train_dataset[1]],
+    batch_size=batch_size_test, shuffle=False)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
 
     train_losses = []
@@ -118,5 +104,4 @@ if __name__ == '__main__':
         train(epoch)
         test()
 
-
-    torch.save(model.state_dict(), 'mnist_model.ph')
+    torch.save(model.state_dict(), 'mnist_model_overfit_class{}.ph'.format(train_dataset[0][1]))
