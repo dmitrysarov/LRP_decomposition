@@ -1,11 +1,21 @@
 import torch
 import numpy as np
 import copy
+from . import utils
 
-def z_rule(module, input_, R):
+def __getattr__(rule_name):
+    if rule_name in globals():
+        return globals()[rule_name]
+    else:
+        return AttributeError
+
+def z_rule(module, input_, R, keep_bias=False):
     '''
     '''
     pself = module
+    if hasattr(pself, 'bias'):
+        if not keep_bias:
+            pself.bias.data.zero_()
     Z = pself(input_)
     S = R /(Z + (Z==0).float()*np.finfo(np.float32).eps)
     Z.backward(S)
@@ -15,15 +25,13 @@ def z_rule(module, input_, R):
 
 def z_plus_rule(module, input_, R, keep_bias=False):
     '''
-    if input constrained to positive only (e.g. Relu)
+    if input constrained to positive only (e.g. Relu including after top layer)
+    same as alfa1beta0 rule
     '''
     pself = module
-    if hasattr(pself, 'bias'):
-        if not keep_bias:
-            pself.bias.data.zero_()
     if hasattr(pself, 'weight'):
         pself.weight.data.clamp_(0, float('inf'))
-    R = z_rule(pself, input_, R)
+    R = z_rule(pself, input_, R, keep_bias=keep_bias)
     return R
 
 
@@ -37,7 +45,7 @@ def z_epsilon_rule(module, input_, R, keep_bias=True):
    # if hasattr(pself, 'weight'):
    #     pself.weight.data.clamp_(0, float('inf'))
     Z = pself(input_)
-    S = R / (Z + ((input_>=0).float()*2-1)*np.finfo(np.float32).eps)
+    S = R / (Z + ((Z>=0).float()*2-1)*np.finfo(np.float32).eps)
     Z.backward(S)
     C = input_.grad
     R = input_ * C
@@ -48,16 +56,23 @@ def alfa_beta_rule(module, input_, R, alfa=2, keep_bias=False):
     '''
     General rule, alfa = 1 is z_plus_rule case. 
     '''
+    #TODO: imlementation https://github.com/albermax/innvestigate/blob/accbb99d0da2eb47f22e3d04563c8964e2b1ad90/innvestigate/analyzer/relevance_based/relevance_rule.py#L212
+    #not the same as in http://www.heatmapping.org/tutorial/
+    assert alfa >= 1, 'alfa should be >=1, but got {}'.format(alfa)
+    #assert beta >= 1, 'beta should be >=0, but got {}'.format(beta)
+    #assert alfa-beta == 1, 'alfa-beta should be equal to 1, but got {}'.format(alfa-beta)#TODO:why alfa-beta=1 not alfa+beta = 1?
     nself = copy.deepcopy(module)
-    nself.weight.data.clamp_(-float('inf'), -np.finfo(np.float32).eps)
+    if hasattr(nself, 'weight'):
+        nself.weight.data.clamp_(-float('inf'), -np.finfo(np.float32).eps)
     pself = copy.deepcopy(module)
-    pself.weight.data.clamp_(np.finfo(np.float32).eps, float('inf'))
+    if hasattr(pself, 'weight'):
+        pself.weight.data.clamp_(np.finfo(np.float32).eps, float('inf'))
     if hasattr(pself, 'bias'):
         if not keep_bias:
             pself.bias.data.zero_()
             nself.bias.data.zero_()
-    inputA_ = copy.deepcopy(input_ + np.finfo(np.float32).eps)
-    inputB_ = copy.deepcopy(input_ + np.finfo(np.float32).eps)
+    inputA_ = input_ + np.finfo(np.float32).eps
+    inputB_ = input_ + np.finfo(np.float32).eps
     inputA_.requires_grad_(True)
     inputA_.retain_grad()
     inputB_.requires_grad_(True)
@@ -66,7 +81,7 @@ def alfa_beta_rule(module, input_, R, alfa=2, keep_bias=False):
     SA = alfa*R/ZA
     ZA.backward(SA)
     ZB = nself(inputB_)
-    SB = -1*(alfa-1)*R/ZB #TODO:why alfa-1 not alfa+beta = 1?
+    SB = -1*(alfa-1)*R/ZB
     ZB.backward(SB)
     Ri = input_*(inputA_.grad + inputB_.grad)
     return Ri
