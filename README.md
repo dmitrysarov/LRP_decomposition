@@ -1,10 +1,11 @@
 This repo consist of LRP (Layer wise propagation) implementation in pytorch.
-Here you can find nice but in my opinion overengineering keras implementation
+Here you can find nice but in keras implementation
 https://github.com/sebastian-lapuschkin/lrp_toolbox
 
-Week implemenation because model should be defined in proper way (namely model.children should be sequance of nn.Sequence) and I don't know 
-how to implement add operation (e.g. in skip connections) in this paradigm. 
-More general approach should be implemented
+This implementation use custom autograd functions to make possiable pass though
+relevance in backward pass instead gradients. This gives ability to propagate
+relevance from skip connections (opposite to sequantial approach from another
+branch where i am using hooks)
 
 LRP_notebook.ipynb - demonstration on MNIST data
 
