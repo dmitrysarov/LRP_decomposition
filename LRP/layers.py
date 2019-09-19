@@ -2,6 +2,7 @@ import torch
 from  torch.nn import modules
 import torch.nn.functional as F
 from . import rules
+Rules = rules.Rules
 
 def __getattr__(name):
     '''
@@ -16,13 +17,15 @@ def __getattr__(name):
 class LRP_zrule_func(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, func, input, func_args):
+    def forward(ctx, func, input, func_args, rule):
         '''
-        forawd pass perform usual func forward pass
+        forawd pass perform usual func forward pass with input(tensor) and func_args(dict) as arguments
+        rule(string) is the name of chosen rule
         '''
         ctx.func = func
         ctx.input =input.clone().detach()
         ctx.func_args = func_args
+        ctx.rule = rule
         return func(input, **func_args)
 
     @staticmethod
@@ -31,6 +34,7 @@ class LRP_zrule_func(torch.autograd.Function):
         substitute backward pass with z rule propagation
         backward pass must return same namber of ouputs as number of inputs in forward pass
         '''
+        rule_func = Rules(ctx.rule)
        # ctx.input.requires_grad_(True)
        # with torch.enable_grad():
        #     Z = ctx.func(ctx.input, *ctx.args)
@@ -38,12 +42,14 @@ class LRP_zrule_func(torch.autograd.Function):
        #     Z.backward(S)
        #     C = ctx.input.grad
        #     R = ctx.input * C
-        R = rules.z_rule(ctx.func, ctx.input, R, ctx.func_args, keep_bias=False)
+        R = rule_func(ctx.func, ctx.input, R, ctx.func_args)
 
-        return None, R, None
+        return None, R, None, None
 
 class LRP_relu_func(torch.autograd.Function):
-
+    '''
+    perform simple pass of relevance during backward
+    '''
     @staticmethod
     def forward(ctx, func, input, args):
         ctx.args = args
@@ -53,7 +59,8 @@ class LRP_relu_func(torch.autograd.Function):
     def backward(ctx, R):
         return None, R, None
 
-# Dumb classes just for convinient assignment(overloadment) of methods
+# Dumb classes just for convinient assignment (overload) of model layers
+# methods
 class Conv2d(object):
     def conv2d_forward(self, input, weight):
         ##Test
@@ -65,8 +72,9 @@ class Conv2d(object):
        #     return F.conv2d(F.pad(input, expanded_padding, mode='circular'),
        #                     weight, self.bias, self.stride,
        #                     _pair(0), self.dilation, self.groups) #TODO _pair(0)?
-        return LRP_zrule_func.apply(F.conv2d, input, {'weight': weight, 'bias': self.bias, 'stride': self.stride,
-                        'padding': self.padding, 'dilation': self.dilation, 'groups': self.groups})
+        return LRP_zrule_func.apply(F.conv2d, input, {'weight': weight, 'bias': self.bias,
+            'stride': self.stride, 'padding': self.padding, 'dilation': self.dilation,
+            'groups': self.groups}, self.rule)
        # if self.padding_mode == 'circular':
        #     expanded_padding = ((self.padding[1] + 1) // 2, self.padding[1] // 2,
        #                         (self.padding[0] + 1) // 2, self.padding[0] // 2)
@@ -104,3 +112,7 @@ class ReLU(object):
         ##Test
         #print(self.__class__.__name__)
         return LRP_relu_func.apply(F.relu, input, {'inplace': self.inplace})
+
+class Linear(object):
+    def forward(self, input):
+        return LRP_zrule_func.apply(F.linear, input, {'weight': self.weight, 'bias': self.bias}, self.rule)

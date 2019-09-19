@@ -2,6 +2,7 @@ import copy
 import pickle
 import torch
 from . import layers
+import types
 
 def flatten_model(module):
     '''
@@ -26,7 +27,7 @@ def copy_module(module):
     module._backward_hooks.popitem()  # remove hooks from module copy
     return module
 
-def redefine_nn(model):
+def redefine_nn(model, rule='z_rule'):
     '''
     go over model layers and overload choosen methods (e.g. forward()).
     New methods come from classes of layers module
@@ -34,11 +35,21 @@ def redefine_nn(model):
     list_of_layers = dir(layers) #list of redefined layers in layers module
     for module in flatten_model(model):
         if module.__class__.__name__ in list_of_layers:
+           # local_class = copy.deepcopy(module.__class__) #current layer class
+           # layer_module_class = layers.__getattr__(local_class.__name__) # get same redefined layer class
+           # list_of_methods = [attr for attr in dir(layer_module_class) if attr[:2] != '__'] #methods which  was redefined
+           # for l in list_of_methods:
+           #     setattr(local_class, l, getattr(layer_module_class, l)) #set redefined methods to layer class
+           # module.__class__ = local_class
+           # setattr(module, 'rule', rule)
+
             local_class = module.__class__ #current layer class
-            layer_module_class = layers.__getattr__(local_class.__name__) #redefine layer class
+            layer_module_class = layers.__getattr__(local_class.__name__) # get same redefined layer class
             list_of_methods = [attr for attr in dir(layer_module_class) if attr[:2] != '__'] #methods which  was redefined
             for l in list_of_methods:
-                setattr(local_class, l, getattr(layer_module_class, l)) #set redefined methods to layer class
+                #overload object method from https://stackoverflow.com/questions/394770/override-a-method-at-instance-level
+                setattr(module, l, types.MethodType(getattr(layer_module_class, l), module)) #set redefined methods to object
+            setattr(module, 'rule', rule)
     return model
 ##Test
 #from torchvision.models import resnet18

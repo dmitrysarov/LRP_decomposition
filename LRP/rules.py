@@ -1,43 +1,76 @@
 import torch
 import numpy as np
 import copy
-from . import utils
 
-def __getattr__(name):
-    '''
-    to get rule functions as rules module attribut
-    '''
-    if name in globals():
-        return globals()[name]
-    else:
-        return AttributeError
-
-def z_rule(func, input, R, args, keep_bias=False):
-    '''
-    '''
-    input.requires_grad_(True)
-    if args.get('bias', None):
-        if not keep_bias:
-            args['bias'] = None
-    with torch.enable_grad():
-        Z = func(input, **args)
-        S = R /(Z + (Z==0).float()*np.finfo(np.float32).eps)
-        Z.backward(S)
-        assert input.grad is not None
-        C = input.grad
-        R = input * C
-    return R
-
-#def z_plus_rule(module, input_, R, keep_bias=False):
+#def __getattr__(name):
 #    '''
-#    if input constrained to positive only (e.g. Relu including after top layer)
-#    same as alfa1beta0 rule
+#    to get rule functions as rules module attribut
 #    '''
-#    pself = module
-#    if hasattr(pself, 'weight'):
-#        pself.weight.data.clamp_(0, float('inf'))
-#    R = z_rule(pself, input_, R, keep_bias=keep_bias)
-#    return R
+#    if name in globals():
+#        return globals()[name]
+#    else:
+#        return AttributeError
+
+class Rules(object):
+
+    all_rules = ['z_rule', 'z_plus', 'z_rule_no_bias', 'z_plus_no_bias']
+
+    def __init__(self, rule, keep_bias=False):
+        assert isinstance(rule, str), 'rule parameter should be of type str'
+        assert rule in self.all_rules, 'Rule "{}" not implemented. Implemented rules {}'.format(rule, self.all_rules)
+        self.rule = rule
+        self.keep_bias=keep_bias
+
+    def __call__(self, *args):
+        if self.rule  == 'z_rule':
+            return self.z_rule(*args, keep_bias=True)
+        if self.rule  == 'z_rule_no_bias':
+            return self.z_rule(*args, keep_bias=False)
+        elif self.rule == 'z_plus':
+            return self.z_plus(*args, keep_bias=True)
+        elif self.rule == 'z_plus_no_bias':
+            return self.z_plus(*args, keep_bias=False)
+        else:
+            ValueError('Rule "{}" not implemented'.format(rule))
+
+    @staticmethod
+    def z_rule(func, input, R, func_args, keep_bias=False):
+        '''
+        func - is a default layer torch function to be called of forward pass
+        '''
+        func_args = copy.deepcopy(func_args)
+        input.requires_grad_(True)
+        if func_args.get('bias', None) is not None:
+            if not keep_bias:
+                func_args['bias'] = None
+        with torch.enable_grad():
+            Z = func(input, **func_args)
+            S = R /(Z + (Z==0).float()*np.finfo(np.float32).eps)
+            Z.backward(S)
+            assert input.grad is not None
+            C = input.grad
+            R = input * C
+        return R
+
+    @staticmethod
+    def z_plus(func, input, R, func_args, keep_bias=False):
+
+        func_args = copy.deepcopy(func_args) #need to not change default parameters
+        input.requires_grad_(True)
+        if func_args.get('bias', None) is not None:
+            if not keep_bias:
+                func_args['bias'] = None
+        weight = func_args.pop('weight')
+        weight.clamp_(0, float('inf'))
+        func_args.update({'weight': weight})
+        with torch.enable_grad():
+            Z = func(input, **func_args)
+            S = R /(Z + (Z==0).float()*np.finfo(np.float32).eps)
+            Z.backward(S)
+            assert input.grad is not None
+            C = input.grad
+            R = input * C
+        return R
 #
 #
 #def z_epsilon_rule(module, input_, R, keep_bias=True):
