@@ -13,13 +13,19 @@ import copy
 
 class Rules(object):
 
-    all_rules = ['z_rule', 'z_plus', 'z_rule_no_bias', 'z_plus_no_bias']
+    all_rules = ['z_rule', 'z_plus', 'z_rule_no_bias', 'z_plus_no_bias', 'z_box_no_bias']
 
-    def __init__(self, rule, keep_bias=False):
+    def __init__(self, rule, lowest=-1, highest=1):
+        '''
+        rule (str) - name of rule, one of {}
+        lowest (int) and highest (int) - bounds of input image values
+        '''.format(self.all_rules)
         assert isinstance(rule, str), 'rule parameter should be of type str'
         assert rule in self.all_rules, 'Rule "{}" not implemented. Implemented rules {}'.format(rule, self.all_rules)
+        assert lowest < highest
         self.rule = rule
-        self.keep_bias=keep_bias
+        self.lowest = lowest
+        self.highest = highest
 
     def __call__(self, *args):
         if self.rule  == 'z_rule':
@@ -30,6 +36,8 @@ class Rules(object):
             return self.z_plus(*args, keep_bias=True)
         elif self.rule == 'z_plus_no_bias':
             return self.z_plus(*args, keep_bias=False)
+        elif self.rule == 'z_box_no_bias':
+            return self.z_box(*args, keep_bias=False, lowest=self.lowest, highest=self.highest)
         else:
             ValueError('Rule "{}" not implemented'.format(rule))
 
@@ -40,6 +48,7 @@ class Rules(object):
         '''
         func_args = copy.deepcopy(func_args)
         input.requires_grad_(True)
+        if input.grad is not None: input.grad.zero_() #otherwise accumulation of gradient happening
         if func_args.get('bias', None) is not None:
             if not keep_bias:
                 func_args['bias'] = None
@@ -57,12 +66,11 @@ class Rules(object):
 
         func_args = copy.deepcopy(func_args) #need to not change default parameters
         input.requires_grad_(True)
+        if input.grad is not None: input.grad.zero_()
         if func_args.get('bias', None) is not None:
             if not keep_bias:
                 func_args['bias'] = None
-        weight = func_args.pop('weight')
-        weight.clamp_(0, float('inf'))
-        func_args.update({'weight': weight})
+        func_args['weight'].clamp_(0, float('inf'))
         with torch.enable_grad():
             Z = func(input, **func_args)
             S = R /(Z + (Z==0).float()*np.finfo(np.float32).eps)
@@ -70,6 +78,46 @@ class Rules(object):
             assert input.grad is not None
             C = input.grad
             R = input * C
+        return R
+
+    @staticmethod
+    def z_box(func, input, R, func_args, lowest, highest, keep_bias=False):
+        '''
+        if input constrained to bounds lowest and highest
+        usually used as first layer,
+        and input image is bound to -1 1 interval
+        '''
+        assert input.min() >= lowest
+        assert input.max() <= highest
+        ifunc_args = copy.deepcopy(func_args)
+        nfunc_args = copy.deepcopy(func_args)
+        nfunc_args['weight'].clamp_(-float('inf'), 0)
+        pfunc_args = copy.deepcopy(func_args)
+        pfunc_args['weight'].clamp_(0, float('inf'))
+        if func_args.get('bias', None) is not None:
+            if not keep_bias:
+                ifunc_args['bias'] = None
+                nfunc_args['bias'] = None
+                pfunc_args['bias'] = None
+        L = torch.zeros_like(input) + lowest
+        H = torch.zeros_like(input) + highest
+        L.requires_grad_(True)
+        #if L.grad is not None: L.grad.zero_()
+        L.retain_grad()
+        H.requires_grad_(True)
+        #if H.grad is not None: H.grad.zero_()
+        H.retain_grad()
+        input.requires_grad_(True)
+        if input.grad is not None: input.grad.zero_()
+        input.retain_grad()
+        with torch.enable_grad():
+            Z = func(input, **ifunc_args) - func(L, **pfunc_args) - func(H, **nfunc_args) + np.finfo(np.float32).eps
+            S = R / (Z + (Z==0).float()*np.finfo(np.float32).eps)
+            Z.backward(S)
+            assert input.grad is not None
+            assert L.grad is not None
+            assert H.grad is not None
+            R = input * input.grad - L * L.grad - H * H.grad
         return R
 #
 #
@@ -124,33 +172,6 @@ class Rules(object):
 #    Ri = input_*(inputA_.grad + inputB_.grad)
 #    return Ri
 #
-#def z_box_rule(module, input_, R, lowest, highest, keep_bias=False):
-#    '''
-#    if input constrained to bounds lowest and highest
-#    '''
-#    assert input_.min() >= lowest
-#    assert input_.max() <= highest
-#    iself = copy.deepcopy(module)
-#    nself = copy.deepcopy(module)
-#    nself.weight.data.clamp_(-float('inf'), 0)
-#    pself = copy.deepcopy(module)
-#    pself.weight.data.clamp_(0, float('inf'))
-#    if hasattr(pself, 'bias'):
-#        if not keep_bias:
-#            pself.bias.data.zero_()
-#            nself.bias.data.zero_()
-#            iself.bias.data.zero_()
-#    L = torch.zeros_like(input_) + lowest
-#    H = torch.zeros_like(input_) + highest
-#    L.requires_grad_(True)
-#    L.retain_grad()
-#    H.requires_grad_(True)
-#    H.retain_grad()
-#    Z = iself(input_) - pself(L) - nself(H) + np.finfo(np.float32).eps
-#    S = R / (Z + (Z==0).float()*np.finfo(np.float32).eps)
-#    Z.backward(S)
-#    R = input_ * input_.grad - L * L.grad - H * H.grad
-#    return R
 #
 #
 #def w2_rule(module, input_, R):

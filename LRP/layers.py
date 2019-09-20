@@ -1,8 +1,6 @@
 import torch
 from  torch.nn import modules
 import torch.nn.functional as F
-from . import rules
-Rules = rules.Rules
 
 def __getattr__(name):
     '''
@@ -17,7 +15,7 @@ def __getattr__(name):
 class LRP_zrule_func(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, func, input, func_args, rule):
+    def forward(ctx, func, input, func_args, rule_func):
         '''
         forawd pass perform usual func forward pass with input(tensor) and func_args(dict) as arguments
         rule(string) is the name of chosen rule
@@ -25,7 +23,7 @@ class LRP_zrule_func(torch.autograd.Function):
         ctx.func = func
         ctx.input =input.clone().detach()
         ctx.func_args = func_args
-        ctx.rule = rule
+        ctx.rule_func = rule_func
         return func(input, **func_args)
 
     @staticmethod
@@ -34,7 +32,6 @@ class LRP_zrule_func(torch.autograd.Function):
         substitute backward pass with z rule propagation
         backward pass must return same namber of ouputs as number of inputs in forward pass
         '''
-        rule_func = Rules(ctx.rule)
        # ctx.input.requires_grad_(True)
        # with torch.enable_grad():
        #     Z = ctx.func(ctx.input, *ctx.args)
@@ -42,7 +39,7 @@ class LRP_zrule_func(torch.autograd.Function):
        #     Z.backward(S)
        #     C = ctx.input.grad
        #     R = ctx.input * C
-        R = rule_func(ctx.func, ctx.input, R, ctx.func_args)
+        R = ctx.rule_func(ctx.func, ctx.input, R, ctx.func_args)
 
         return None, R, None, None
 
@@ -74,7 +71,7 @@ class Conv2d(object):
        #                     _pair(0), self.dilation, self.groups) #TODO _pair(0)?
         return LRP_zrule_func.apply(F.conv2d, input, {'weight': weight, 'bias': self.bias,
             'stride': self.stride, 'padding': self.padding, 'dilation': self.dilation,
-            'groups': self.groups}, self.rule)
+            'groups': self.groups}, self.rule_func)
        # if self.padding_mode == 'circular':
        #     expanded_padding = ((self.padding[1] + 1) // 2, self.padding[1] // 2,
        #                         (self.padding[0] + 1) // 2, self.padding[0] // 2)
@@ -115,4 +112,4 @@ class ReLU(object):
 
 class Linear(object):
     def forward(self, input):
-        return LRP_zrule_func.apply(F.linear, input, {'weight': self.weight, 'bias': self.bias}, self.rule)
+        return LRP_zrule_func.apply(F.linear, input, {'weight': self.weight, 'bias': self.bias}, self.rule_func)

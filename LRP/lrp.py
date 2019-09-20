@@ -20,12 +20,14 @@ class LRP():
         return self.output.clone().detach()
 
     def relprop(self, R=None):
+        assert self.output is not None, 'First performe forward pass'
         if R is None: #if input R (relevance) is None select max logit
             R = (self.output == self.output.max()).float()
         self.output.backward(R, retain_graph=True)
-        relevance = self.local_input.grad
-        assert relevance is not None, 'obtained relevance is None'
-        return relevance
+        C = self.local_input.grad.clone().detach()
+        assert C is not None, 'obtained relevance is None'
+        self.local_input.grad = None
+        return C*self.local_input.clone().detach()
 
     __call__ = forward
 
