@@ -14,21 +14,30 @@ class LRP():
         self.output = None
 
     def forward(self, input_):
+        '''
+        performe usual forward pass
+        '''
         self.local_input = input_.clone().detach()
         self.local_input.requires_grad_(True)
-        self.output = self.model(self.local_input)
-        return self.output.clone().detach()
+        output = self.model(self.local_input)
+        return output
 
-    def relprop(self, R=None):
-        assert self.output is not None, 'First performe forward pass'
+    def relprop(self, input_, R=None):
+        '''
+        call as default object call
+        first perform forward pass, second relevance propagation
+        '''
+        #assert self.output is not None, 'First performe forward pass'
+        output = self.forward(input_) #after this step object will have local_input attribute, which will request gradient
         if R is None: #if input R (relevance) is None select max logit
-            R = (self.output == self.output.max()).float()
-        self.output.backward(R, retain_graph=True)
+            R = (output == output.max()).float()
+        output.backward(R, retain_graph=True)
         C = self.local_input.grad.clone().detach()
         assert C is not None, 'obtained relevance is None'
         self.local_input.grad = None
-        return C*self.local_input.clone().detach()
+        R = C*input_.clone().detach()
+        return R
 
-    __call__ = forward
+    __call__ = relprop
 
 

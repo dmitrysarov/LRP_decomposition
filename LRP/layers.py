@@ -135,3 +135,13 @@ class ReLU(object):
 class Linear(object):
     def forward(self, input):
         return LRP_zrule_func.apply(F.linear, input, {'weight': self.weight, 'bias': self.bias}, self.rule_func)
+
+class AvgPool2d(object):
+    def forward(self, input):
+        return LRP_zrule_func.apply(F.avg_pool2d, input, {'kernel_size': self.kernel_size, 'stride': self.stride,
+            'padding': self.padding, 'ceil_mode': self.ceil_mode, 'count_include_pad': self.count_include_pad, 'divisor_override': self.divisor_override})
+
+class MaxPool2d(object):
+    def forward(self, input):
+        return LRP_zrule_func.apply(F.max_pool2d, input, {'kernel_size': self.kernel_size, 'stride': self.stride,
+            'padding': self.padding, 'ceil_mode': self.ceil_mode, 'dilation': self.dilation, 'return_indices': self.return_indices})
