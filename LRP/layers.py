@@ -1,6 +1,7 @@
 import torch
 from  torch.nn import modules
 import torch.nn.functional as F
+import numpy as np
 
 def __getattr__(name):
     '''
@@ -56,6 +57,27 @@ class LRP_relu_func(torch.autograd.Function):
     def backward(ctx, R):
         return None, R, None
 
+class LRP_batchnorm_func(torch.autograd.Function):
+    '''
+    perform simple pass of relevance during backward
+    '''
+    @staticmethod
+    def forward(ctx, func, input, args):
+        ctx.args = args
+        ctx.input = input
+        ctx.output = func(input, **args)
+        return ctx.output
+
+    @staticmethod
+    def backward(ctx, R):
+        #        x * (y - beta)     R
+        # Rin = ---------------- * ----
+        #           x - mu          y
+        beta = ctx.args['bias']
+        mu = ctx.args['running_mean']
+        Rout = ctx.input*(ctx.output - beta[None, ..., None, None])*R/((ctx.input - mu[None, ..., None, None])*ctx.output + np.finfo(np.float32).eps)
+        return None, Rout, None
+
 # Dumb classes just for convinient assignment (overload) of model layers
 # methods
 class Conv2d(object):
@@ -99,10 +121,10 @@ class BatchNorm2d(object):
                 else:  # use exponential moving average
                     exponential_average_factor = self.momentum
 
-        return F.batch_norm(
-            input, self.running_mean, self.running_var, self.weight, self.bias,
-            self.training or not self.track_running_stats,
-            exponential_average_factor, self.eps)
+        return LRP_batchnorm_func.apply(F.batch_norm,
+                input, {'running_mean': self.running_mean, 'running_var': self.running_var, 'weight': self.weight, 'bias': self.bias,
+                    'training': self.training or not self.track_running_stats,
+                    'momentum': exponential_average_factor, 'eps': self.eps})
 
 class ReLU(object):
     def forward(self, input):
