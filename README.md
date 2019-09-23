@@ -19,10 +19,3 @@ I overload layers forward pass, where substitute default autograd
 function with custom one, excepting as argument - default function, input,
 default function arguments, and LRP_rule function
 
-LRP_notebook.ipynb - demonstration on MNIST data
-
-find_root.ipynb - root point calculation notebook
-
-mnist_model.ph - pretrained weights from simple conv model
-
-mnist_model.py - script to obtain simple conv model
