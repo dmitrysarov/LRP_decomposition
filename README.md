@@ -15,6 +15,9 @@ The quiastion is - is it valid for skip connection. I guess not.
 Current implemention could be used for resnet with little hack - needness of
 substitube identity summation operation with custom autograd function.
 
+I overload layers forward pass, where substitute default autograd
+function with custom one, excepting as argument - default function, input,
+default function arguments, and LRP_rule function
 
 LRP_notebook.ipynb - demonstration on MNIST data
 

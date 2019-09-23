@@ -144,4 +144,4 @@ class AvgPool2d(object):
 class MaxPool2d(object):
     def forward(self, input):
         return LRP_zrule_func.apply(F.max_pool2d, input, {'kernel_size': self.kernel_size, 'stride': self.stride,
-            'padding': self.padding, 'ceil_mode': self.ceil_mode, 'dilation': self.dilation, 'return_indices': self.return_indices})
+            'padding': self.padding, 'ceil_mode': self.ceil_mode, 'dilation': self.dilation, 'return_indices': self.return_indices}, self.rule_func)
