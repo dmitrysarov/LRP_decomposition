@@ -29,7 +29,7 @@ def copy_module(module):
     module._backward_hooks.popitem()  # remove hooks from module copy
     return module
 
-def redefine_nn(model, rule='z_rule', input_lowest=-1, input_highest=1):
+def redefine_nn(model, rule, input_lowest, input_highest):
     '''
     go over model layers and overload chosen instance methods (e.g. forward()).
     New methods come from classes of layers module

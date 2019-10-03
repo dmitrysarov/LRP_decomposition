@@ -58,8 +58,9 @@ class Rules(object):
             Z.backward(S)
             assert input.grad is not None
             C = input.grad
-            R = input * C
-        return R
+            Ri = input * C
+            print(Ri.sum())
+        return Ri
 
     @staticmethod
     def z_plus(func, input, R, func_args, keep_bias=False):
@@ -70,15 +71,16 @@ class Rules(object):
         if func_args.get('bias', None) is not None:
             if not keep_bias:
                 func_args['bias'] = None
-        func_args['weight'].clamp_(0, float('inf'))
+        if func_args.get('weight', None) is not None:
+            func_args['weight'].clamp_(0, float('inf'))
         with torch.enable_grad():
             Z = func(input, **func_args)
             S = R /(Z + (Z==0).float()*np.finfo(np.float32).eps)
             Z.backward(S)
             assert input.grad is not None
             C = input.grad
-            R = input * C
-        return R
+            Ri = input * C
+        return Ri
 
     @staticmethod
     def z_box(func, input, R, func_args, lowest, highest, keep_bias=False):
@@ -111,14 +113,15 @@ class Rules(object):
         if input.grad is not None: input.grad.zero_()
         input.retain_grad()
         with torch.enable_grad():
-            Z = func(input, **ifunc_args) - func(L, **pfunc_args) - func(H, **nfunc_args) + np.finfo(np.float32).eps
+            Z = func(input, **ifunc_args) - func(L, **pfunc_args) - func(H, **nfunc_args)
             S = R / (Z + (Z==0).float()*np.finfo(np.float32).eps)
             Z.backward(S)
             assert input.grad is not None
             assert L.grad is not None
             assert H.grad is not None
-            R = input * input.grad - L * L.grad - H * H.grad
-        return R
+            import ipdb; ipdb.set_trace() # BREAKPOINT
+            Ri = input * input.grad - L * L.grad - H * H.grad
+        return Ri
 #
 #
 #def z_epsilon_rule(module, input_, R, keep_bias=True):

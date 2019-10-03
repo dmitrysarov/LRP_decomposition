@@ -7,10 +7,12 @@ class LRP():
     :param rule:str: name of used rule
     '''
 
-    def __init__(self, model, rule):
+    def __init__(self, model, rule, input_lowest=-1, input_highest=1):
         self.model = copy.deepcopy(model)
         self.model = self.model.eval()
-        self.model = utils.redefine_nn(self.model, rule=rule) #redefine each layer(module) of model, to set custom autograd func
+        self.model = utils.redefine_nn(self.model, rule=rule, 
+                input_lowest=input_lowest, 
+                input_highest=input_highest) #redefine each layer(module) of model, to set custom autograd func
         self.output = None
 
     def forward(self, input_):
@@ -35,7 +37,7 @@ class LRP():
         C = self.local_input.grad.clone().detach()
         assert C is not None, 'obtained relevance is None'
         self.local_input.grad = None
-        R = C*input_.clone().detach()
+        R = C#*input_.clone().detach()
         return R
 
     __call__ = relprop
